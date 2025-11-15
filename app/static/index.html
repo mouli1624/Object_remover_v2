@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Object Remover - Professional Image Editing</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 40px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .header {
+      text-align: center;
+      color: white;
+      margin-bottom: 40px;
+      animation: fadeInDown 0.8s ease;
+    }
+
+    .header h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin-bottom: 10px;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    }
+
+    .header p {
+      font-size: 1.1rem;
+      opacity: 0.95;
+      font-weight: 300;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1600px;
+      background: white;
+      padding: 40px;
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      animation: fadeInUp 0.8s ease;
+    }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+      margin-top: 30px;
+    }
+
+    @media (max-width: 1024px) {
+      .main-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .panel {
+      background: #f8f9fa;
+      border-radius: 12px;
+      padding: 25px;
+      border: 2px solid #e2e8f0;
+    }
+
+    .panel-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #2d3748;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .panel-title .icon {
+      font-size: 1.3rem;
+    }
+
+    .section-title {
+      font-size: 1.3rem;
+      font-weight: 600;
+      color: #2d3748;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .section-title::before {
+      content: '';
+      width: 4px;
+      height: 24px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 2px;
+    }
+
+    .mode-toggle {
+      margin-bottom: 30px;
+      display: flex;
+      gap: 15px;
+      background: #f7fafc;
+      padding: 8px;
+      border-radius: 12px;
+      width: fit-content;
+    }
+
+    .mode-toggle button {
+      padding: 12px 28px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      background: transparent;
+      color: #4a5568;
+      font-weight: 500;
+      font-size: 0.95rem;
+      transition: all 0.3s ease;
+      position: relative;
+    }
+
+    .mode-toggle button:hover {
+      color: #667eea;
+    }
+
+    .mode-toggle button.active {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      margin-bottom: 30px;
+      align-items: center;
+    }
+
+    .file-input-wrapper {
+      position: relative;
+      overflow: hidden;
+      display: inline-block;
+    }
+
+    .file-input-wrapper input[type=file] {
+      position: absolute;
+      left: -9999px;
+    }
+
+    .file-input-label {
+      padding: 12px 24px;
+      background: #f7fafc;
+      border: 2px dashed #cbd5e0;
+      border-radius: 10px;
+      cursor: pointer;
+      display: inline-block;
+      font-weight: 500;
+      color: #4a5568;
+      transition: all 0.3s ease;
+    }
+
+    .file-input-label:hover {
+      border-color: #667eea;
+      color: #667eea;
+      background: #edf2f7;
+    }
+
+    .controls button {
+      padding: 12px 28px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      font-weight: 500;
+      font-size: 0.95rem;
+      transition: all 0.3s ease;
+    }
+
+    #processBtn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    #processBtn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+    }
+
+    #processBtn:active {
+      transform: translateY(0);
+    }
+
+    #clearBtn {
+      background: #fff;
+      color: #e53e3e;
+      border: 2px solid #e53e3e;
+    }
+
+    #clearBtn:hover {
+      background: #e53e3e;
+      color: white;
+    }
+
+    .canvas-container {
+      position: relative;
+      border: 2px solid #e2e8f0;
+      border-radius: 12px;
+      margin-bottom: 30px;
+      overflow: hidden;
+      background: #f7fafc;
+      min-height: 400px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .canvas-container.has-image {
+      background: #fff;
+    }
+
+    .canvas-placeholder {
+      text-align: center;
+      color: #a0aec0;
+      padding: 60px 20px;
+    }
+
+    .canvas-placeholder svg {
+      width: 80px;
+      height: 80px;
+      margin-bottom: 20px;
+      opacity: 0.5;
+    }
+
+    canvas {
+      display: block;
+      max-width: 100%;
+      cursor: crosshair;
+    }
+
+    .brush-size-control {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #f7fafc;
+      padding: 10px 20px;
+      border-radius: 10px;
+    }
+
+    .brush-size-control label {
+      font-weight: 500;
+      color: #4a5568;
+      font-size: 0.9rem;
+    }
+
+    .brush-size-control input[type="range"] {
+      width: 120px;
+      cursor: pointer;
+    }
+
+    .brush-size-value {
+      font-weight: 600;
+      color: #667eea;
+      min-width: 35px;
+    }
+
+    .result-container {
+      margin-top: 30px;
+      display: none;
+    }
+
+    .result-container.show {
+      display: block;
+      animation: fadeIn 0.5s ease;
+    }
+
+    .result-container img {
+      max-width: 100%;
+      border: 2px solid #e2e8f0;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    .status {
+      margin-top: 20px;
+      padding: 15px 20px;
+      border-radius: 10px;
+      font-weight: 500;
+      text-align: center;
+      display: none;
+    }
+
+    .status.show {
+      display: block;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .status.success {
+      background: #c6f6d5;
+      color: #22543d;
+      border: 1px solid #9ae6b4;
+    }
+
+    .status.error {
+      background: #fed7d7;
+      color: #742a2a;
+      border: 1px solid #fc8181;
+    }
+
+    .status.info {
+      background: #bee3f8;
+      color: #2c5282;
+      border: 1px solid #90cdf4;
+    }
+
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      margin-top: 30px;
+      padding-top: 30px;
+      border-top: 1px solid #e2e8f0;
+    }
+
+    .feature {
+      text-align: center;
+      padding: 20px;
+    }
+
+    .feature-icon {
+      font-size: 2rem;
+      margin-bottom: 10px;
+    }
+
+    .feature h3 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #2d3748;
+      margin-bottom: 5px;
+    }
+
+    .feature p {
+      font-size: 0.85rem;
+      color: #718096;
+      line-height: 1.5;
+    }
+
+    @keyframes fadeInDown {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+      }
+      to {
+        opacity: 1;
+      }
+    }
+
+    /* Loading Animation */
+    .loading-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255, 255, 255, 0.95);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+      z-index: 10;
+    }
+
+    .loading-overlay.show {
+      display: flex;
+    }
+
+    .loading-content {
+      text-align: center;
+    }
+
+    .spinner {
+      width: 60px;
+      height: 60px;
+      margin: 0 auto 20px;
+      border: 4px solid #e2e8f0;
+      border-top: 4px solid #667eea;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .loading-text {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #2d3748;
+      margin-bottom: 8px;
+    }
+
+    .loading-subtext {
+      font-size: 0.9rem;
+      color: #718096;
+    }
+
+    .progress-bar {
+      width: 200px;
+      height: 4px;
+      background: #e2e8f0;
+      border-radius: 2px;
+      margin: 15px auto 0;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea, #764ba2);
+      width: 0%;
+      animation: progress 3s ease-in-out infinite;
+    }
+
+    @keyframes progress {
+      0% { width: 0%; }
+      50% { width: 70%; }
+      100% { width: 100%; }
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.02); }
+    }
+
+    .result-ready {
+      animation: pulse 0.5s ease;
+    }
+
+    @media (max-width: 768px) {
+      .header h1 {
+        font-size: 2rem;
+      }
+      
+      .container {
+        padding: 25px;
+      }
+
+      .controls {
+        flex-direction: column;
+        width: 100%;
+      }
+
+      .controls button, .file-input-label {
+        width: 100%;
+        text-align: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>✨ AI Object Remover</h1>
+    <p>Remove unwanted objects from your images with precision</p>
+  </div>
+
+  <div class="container">
+    <div class="section-title">Upload & Detect Objects</div>
+
+    <div class="controls">
+      <div class="file-input-wrapper">
+        <input type="file" id="imageUpload" accept="image/*">
+        <label for="imageUpload" class="file-input-label">
+          📁 Choose Image
+        </label>
+      </div>
+      <button id="detectAllBtn">🔍 Detect Objects</button>
+    </div>
+
+    <div id="status" class="status"></div>
+    
+    <!-- Detected Objects Panel -->
+    <div id="detectedObjectsPanel" style="display: none; margin: 20px auto; max-width: 1400px; padding: 20px; background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+      <h3 style="margin: 0 0 15px 0; color: #333;">🎯 Detected Objects (Click to Remove)</h3>
+      <div id="detectedObjectsList" style="display: flex; flex-wrap: wrap; gap: 10px;"></div>
+    </div>
+
+    <!-- Side by Side Layout -->
+    <div class="main-grid">
+      <!-- Input Panel -->
+      <div class="panel">
+        <div class="panel-title">
+          <span class="icon">📸</span>
+          Input Image
+        </div>
+        <div class="canvas-container" id="canvasContainer" style="position: relative;">
+          <div class="canvas-placeholder" id="placeholder">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <h3>Upload an image to get started</h3>
+            <p>Supports JPG, PNG, and other common formats</p>
+          </div>
+          <canvas id="imageCanvas"></canvas>
+          <!-- Loading overlay for processing -->
+          <div class="loading-overlay" id="processingLoader">
+            <div class="loading-content">
+              <div class="spinner"></div>
+              <div class="loading-text">Processing Image...</div>
+              <div class="loading-subtext">Generating mask with AI</div>
+              <div class="progress-bar">
+                <div class="progress-fill"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Output Panel -->
+      <div class="panel">
+        <div class="panel-title">
+          <span class="icon">✨</span>
+          Result
+        </div>
+        <div class="result-container" id="resultContainer" style="position: relative; display: block;">
+          <div class="canvas-placeholder" id="resultPlaceholder" style="min-height: 400px; display: flex;">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+            </svg>
+            <h3>Result will appear here</h3>
+            <p>Process an image and remove objects to see the result</p>
+          </div>
+          <img id="resultImage" src="" alt="Processed result" style="display: none; max-width: 100%; border-radius: 12px;">
+          <!-- Loading overlay for inpainting -->
+          <div class="loading-overlay" id="inpaintingLoader">
+            <div class="loading-content">
+              <div class="spinner"></div>
+              <div class="loading-text" id="loadingText">Removing Object...</div>
+              <div class="loading-subtext" id="loadingSubtext">AI is working its magic ✨</div>
+              <div class="progress-bar">
+                <div class="progress-fill"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="features">
+      <div class="feature">
+        <div class="feature-icon">🎯</div>
+        <h3>Precise Selection</h3>
+        <p>Use brush or click mode for accurate object selection</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">⚡</div>
+        <h3>Fast Processing</h3>
+        <p>AI-powered removal in seconds</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🎨</div>
+        <h3>Smart Inpainting</h3>
+        <p>Seamlessly fills removed areas</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Elements
+    const canvas = document.getElementById('imageCanvas');
+    const ctx = canvas.getContext('2d');
+    const placeholder = document.getElementById('placeholder');
+    const canvasContainer = document.getElementById('canvasContainer');
+    const imageUpload = document.getElementById('imageUpload');
+    const detectAllBtn = document.getElementById('detectAllBtn');
+    const resultContainer = document.getElementById('resultContainer');
+    const resultImage = document.getElementById('resultImage');
+    const statusDiv = document.getElementById('status');
+    const inpaintingLoader = document.getElementById('inpaintingLoader');
+    const resultPlaceholder = document.getElementById('resultPlaceholder');
+    const detectedObjectsPanel = document.getElementById('detectedObjectsPanel');
+    const detectedObjectsList = document.getElementById('detectedObjectsList');
+    const loadingText = document.getElementById('loadingText');
+    const loadingSubtext = document.getElementById('loadingSubtext');
+
+    // State
+    let currentImage = null;
+    let inpaintingModel = 'hybrid'; // Always use hybrid mode
+    let lastUploadResult = null; // Store upload result for inpainting
+
+    // Status helper functions
+    function showStatus(message, type = 'info') {
+      statusDiv.textContent = message;
+      statusDiv.className = `status show ${type}`;
+    }
+
+    function hideStatus() {
+      statusDiv.className = 'status';
+    }
+
+    // Handle image upload
+    imageUpload.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          currentImage = img;
+          // Set canvas dimensions to match image
+          canvas.width = img.width;
+          canvas.height = img.height;
+          
+          // Draw image
+          ctx.drawImage(img, 0, 0);
+          
+          // Hide placeholder and show canvas
+          placeholder.style.display = 'none';
+          canvas.style.display = 'block';
+          canvasContainer.classList.add('has-image');
+          
+          // Hide detected objects panel and result
+          detectedObjectsPanel.style.display = 'none';
+          resultPlaceholder.style.display = 'flex';
+          resultImage.style.display = 'none';
+          
+          showStatus('✅ Image loaded! Click "Detect Objects" to find objects.', 'success');
+          setTimeout(hideStatus, 3000);
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // Detect All Objects button
+    detectAllBtn.addEventListener('click', async () => {
+      if (!currentImage) {
+        showStatus('❌ Please upload an image first', 'error');
+        return;
+      }
+      
+      try {
+        detectAllBtn.disabled = true;
+        
+        // If image hasn't been uploaded to backend yet, upload it first
+        if (!lastUploadResult || !lastUploadResult.image_path) {
+          showStatus('📤 Uploading image...', 'info');
+          
+          // Convert canvas to blob
+          const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+          const formData = new FormData();
+          formData.append('image', blob, 'image.png');
+          
+          const uploadResponse = await fetch('/upload', {
+            method: 'POST',
+            body: formData
+          });
+          
+          if (!uploadResponse.ok) throw new Error('Upload failed');
+          
+          lastUploadResult = await uploadResponse.json();
+        }
+        
+        showStatus('🔍 Detecting all objects...', 'info');
+        
+        const response = await fetch('/detect-objects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            image_path: lastUploadResult.image_path,
+            confidence_threshold: 0.25
+          })
+        });
+        
+        if (!response.ok) throw new Error('Detection failed');
+        
+        const result = await response.json();
+        
+        if (result.total_count === 0) {
+          showStatus('⚠️ No objects detected in the image', 'warning');
+          detectedObjectsPanel.style.display = 'none';
+        } else {
+          showStatus(`✅ Detected ${result.total_count} object(s)! Click on any to remove.`, 'success');
+          
+          // Display detected objects
+          detectedObjectsList.innerHTML = '';
+          result.detected_objects.forEach(obj => {
+            const objBtn = document.createElement('button');
+            objBtn.className = 'detected-object-btn';
+            objBtn.innerHTML = `
+              <span style="font-size: 20px;">🎯</span>
+              <span style="font-weight: 600;">${obj.class_name}</span>
+              <span style="font-size: 12px; opacity: 0.7;">${(obj.confidence * 100).toFixed(1)}%</span>
+            `;
+            objBtn.style.cssText = `
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              gap: 5px;
+              padding: 15px 20px;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+              border: none;
+              border-radius: 10px;
+              cursor: pointer;
+              transition: all 0.3s ease;
+              box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+            `;
+            
+            objBtn.onmouseover = () => {
+              objBtn.style.transform = 'translateY(-2px)';
+              objBtn.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.5)';
+            };
+            objBtn.onmouseout = () => {
+              objBtn.style.transform = 'translateY(0)';
+              objBtn.style.boxShadow = '0 2px 8px rgba(102, 126, 234, 0.3)';
+            };
+            
+            objBtn.onclick = async () => {
+              // Use this object's mask for removal
+              lastUploadResult.mask_path = obj.mask_url;
+              
+              // Show inpainting loader
+              inpaintingLoader.classList.add('show');
+              loadingText.textContent = 'Hybrid Processing...';
+              loadingSubtext.textContent = 'Step 1: LaMa → Step 2: Flux Kontext 🔄';
+              showStatus(`🔄 Removing ${obj.class_name} with Hybrid Mode...`, 'info');
+              objBtn.disabled = true;
+              
+              try {
+                // Always use hybrid endpoint
+                const endpoint = '/remove-hybrid';
+                
+                const removeResponse = await fetch(endpoint, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    image_path: lastUploadResult.image_path,
+                    mask_path: obj.mask_url,
+                    object_name: obj.class_name
+                  })
+                });
+                
+                if (!removeResponse.ok) throw new Error('Removal failed');
+                
+                const removeResult = await removeResponse.json();
+                
+                inpaintingLoader.classList.remove('show');
+                
+                if (removeResult.output_url) {
+                  resultPlaceholder.style.display = 'none';
+                  resultImage.style.display = 'block';
+                  resultImage.src = removeResult.output_url + '?t=' + Date.now();
+                  resultContainer.classList.add('show');
+                  const timeInfo = removeResult.total_time ? ` (${removeResult.total_time.toFixed(1)}s)` : '';
+                  showStatus(`✅ ${obj.class_name} removed successfully using Hybrid Mode!${timeInfo}`, 'success');
+                } else {
+                  throw new Error('No output URL received');
+                }
+              } catch (error) {
+                inpaintingLoader.classList.remove('show');
+                showStatus(`❌ Error: ${error.message}`, 'error');
+              } finally {
+                objBtn.disabled = false;
+              }
+            };
+            
+            detectedObjectsList.appendChild(objBtn);
+          });
+          
+          detectedObjectsPanel.style.display = 'block';
+        }
+        
+        detectAllBtn.disabled = false;
+        
+      } catch (error) {
+        console.error('Detection error:', error);
+        showStatus(`❌ Detection failed: ${error.message}`, 'error');
+        detectAllBtn.disabled = false;
+      }
+    });
+    
+    // Initialize canvas as hidden
+    canvas.style.display = 'none';
+  </script>
+</body>
+</html>
