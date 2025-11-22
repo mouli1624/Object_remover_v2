@@ -15,6 +15,13 @@ class RemoveMultipleObjectsRequest(BaseModel):
     mask_path: str
     object_names: list[str]
 
+class ReplaceObjectRequest(BaseModel):
+    image_path: str
+    mask_path: str
+    prompt: str
+    object_name: str = "object"
+    guidance: float = 4.5
+
 @router.post("/remove")
 async def remove_object(request: RemoveObjectRequest):
     """
@@ -189,3 +196,51 @@ async def remove_object_hybrid(request: RemoveObjectRequest):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Hybrid removal failed: {str(e)}")
+
+@router.post("/replace")
+async def replace_object(request: ReplaceObjectRequest):
+    """
+    Replace an object in the image with AI-generated content using Flux Kontext Pro.
+    The mask is overlaid on the image as white pixels, then the prompt guides what to generate.
+    """
+    try:
+        inpainting_service = get_inpainting_service()
+        
+        # Convert URL paths to filesystem paths if needed
+        image_path = request.image_path
+        mask_path = request.mask_path
+        
+        # If paths start with 'uploads/', convert to 'app/static/uploads/'
+        if image_path.startswith('uploads/'):
+            image_path = 'app/static/' + image_path
+        if mask_path.startswith('uploads/'):
+            mask_path = 'app/static/' + mask_path
+        
+        # Perform object replacement
+        output_path, result_info = inpainting_service.replace_object(
+            image_path=image_path,
+            mask_path=mask_path,
+            prompt=request.prompt,
+            object_name=request.object_name,
+            guidance=6
+        )
+        
+        # Convert path to URL
+        if "app/static/" in output_path:
+            output_url = "/" + output_path.replace("app/static/", "")
+        else:
+            output_url = "/uploads/" + Path(output_path).name
+        
+        print(f"[REPLACE] Output path: {output_path}")
+        print(f"[REPLACE] Output URL: {output_url}")
+        print(f"[REPLACE] Prompt: {request.prompt}")
+        
+        return {
+            "status": "success",
+            "output_url": output_url,
+            "output_path": output_path,
+            **result_info
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Object replacement failed: {str(e)}")

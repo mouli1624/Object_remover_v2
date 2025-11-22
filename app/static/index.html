@@ -465,6 +465,174 @@
       animation: pulse 0.5s ease;
     }
 
+    /* Modal Styles */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .modal-overlay.show {
+      display: flex;
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 16px;
+      padding: 30px;
+      max-width: 500px;
+      width: 90%;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+      animation: slideUp 0.3s ease;
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .modal-header {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #2d3748;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .modal-subheader {
+      font-size: 0.95rem;
+      color: #718096;
+      margin-bottom: 25px;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+
+    .modal-btn {
+      flex: 1;
+      padding: 20px;
+      border: 2px solid #e2e8f0;
+      border-radius: 12px;
+      background: white;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #2d3748;
+    }
+
+    .modal-btn:hover {
+      border-color: #667eea;
+      background: #f7fafc;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+    }
+
+    .modal-btn-icon {
+      font-size: 2.5rem;
+    }
+
+    .prompt-input-container {
+      display: none;
+      margin-top: 20px;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .prompt-input-container.show {
+      display: block;
+    }
+
+    .prompt-label {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #2d3748;
+      margin-bottom: 10px;
+      display: block;
+    }
+
+    .prompt-input {
+      width: 100%;
+      padding: 12px 15px;
+      border: 2px solid #e2e8f0;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      font-family: inherit;
+      transition: all 0.3s ease;
+    }
+
+    .prompt-input:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .modal-footer {
+      display: flex;
+      gap: 10px;
+      margin-top: 25px;
+    }
+
+    .modal-footer button {
+      flex: 1;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .btn-cancel {
+      background: #f7fafc;
+      color: #4a5568;
+      border: 2px solid #e2e8f0;
+    }
+
+    .btn-cancel:hover {
+      background: #edf2f7;
+    }
+
+    .btn-confirm {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-confirm:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+    }
+
+    .btn-confirm:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
     @media (max-width: 768px) {
       .header h1 {
         font-size: 2rem;
@@ -482,6 +650,10 @@
       .controls button, .file-input-label {
         width: 100%;
         text-align: center;
+      }
+
+      .modal-actions {
+        flex-direction: column;
       }
     }
   </style>
@@ -509,7 +681,7 @@
     
     <!-- Detected Objects Panel -->
     <div id="detectedObjectsPanel" style="display: none; margin: 20px auto; max-width: 1400px; padding: 20px; background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-      <h3 style="margin: 0 0 15px 0; color: #333;">🎯 Detected Objects (Click to Remove)</h3>
+      <h3 style="margin: 0 0 15px 0; color: #333;">🎯 Detected Objects (Click to Remove or Replace)</h3>
       <div id="detectedObjectsList" style="display: flex; flex-wrap: wrap; gap: 10px;"></div>
     </div>
 
@@ -593,6 +765,46 @@
     </div>
   </div>
 
+  <!-- Modal for Remove/Replace Choice -->
+  <div class="modal-overlay" id="actionModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        🎯 <span id="modalObjectName">Object</span>
+      </div>
+      <div class="modal-subheader">
+        Choose an action for this object
+      </div>
+      
+      <div class="modal-actions">
+        <button class="modal-btn" id="removeBtn">
+          <div class="modal-btn-icon">🗑️</div>
+          <div>Remove</div>
+        </button>
+        <button class="modal-btn" id="replaceBtn">
+          <div class="modal-btn-icon">✨</div>
+          <div>Replace</div>
+        </button>
+      </div>
+
+      <div class="prompt-input-container" id="promptContainer">
+        <label class="prompt-label" for="promptInput">
+          What would you like to replace it with?
+        </label>
+        <input 
+          type="text" 
+          id="promptInput" 
+          class="prompt-input" 
+          placeholder="e.g., a red sports car, a modern lamp, a tree..."
+        />
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-cancel" id="modalCancelBtn">Cancel</button>
+        <button class="btn-confirm" id="modalConfirmBtn" style="display: none;">Confirm</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     // Elements
     const canvas = document.getElementById('imageCanvas');
@@ -610,11 +822,23 @@
     const detectedObjectsList = document.getElementById('detectedObjectsList');
     const loadingText = document.getElementById('loadingText');
     const loadingSubtext = document.getElementById('loadingSubtext');
+    
+    // Modal elements
+    const actionModal = document.getElementById('actionModal');
+    const modalObjectName = document.getElementById('modalObjectName');
+    const removeBtn = document.getElementById('removeBtn');
+    const replaceBtn = document.getElementById('replaceBtn');
+    const promptContainer = document.getElementById('promptContainer');
+    const promptInput = document.getElementById('promptInput');
+    const modalCancelBtn = document.getElementById('modalCancelBtn');
+    const modalConfirmBtn = document.getElementById('modalConfirmBtn');
 
     // State
     let currentImage = null;
     let inpaintingModel = 'hybrid'; // Always use hybrid mode
     let lastUploadResult = null; // Store upload result for inpainting
+    let currentSelectedObject = null; // Store currently selected object
+    let selectedAction = null; // 'remove' or 'replace'
 
     // Status helper functions
     function showStatus(message, type = 'info') {
@@ -624,6 +848,157 @@
 
     function hideStatus() {
       statusDiv.className = 'status';
+    }
+
+    // Modal functions
+    function showModal(obj) {
+      currentSelectedObject = obj;
+      selectedAction = null;
+      modalObjectName.textContent = obj.class_name;
+      promptContainer.classList.remove('show');
+      modalConfirmBtn.style.display = 'none';
+      promptInput.value = '';
+      actionModal.classList.add('show');
+    }
+
+    function hideModal() {
+      actionModal.classList.remove('show');
+      currentSelectedObject = null;
+      selectedAction = null;
+    }
+
+    // Remove button handler
+    removeBtn.addEventListener('click', () => {
+      console.log('Remove button clicked');
+      selectedAction = 'remove';
+      console.log('Selected action set to:', selectedAction);
+      processObject();
+    });
+
+    // Replace button handler
+    replaceBtn.addEventListener('click', () => {
+      console.log('Replace button clicked');
+      selectedAction = 'replace';
+      console.log('Selected action set to:', selectedAction);
+      promptContainer.classList.add('show');
+      modalConfirmBtn.style.display = 'block';
+      promptInput.focus();
+    });
+
+    // Modal confirm button
+    modalConfirmBtn.addEventListener('click', () => {
+      console.log('Confirm button clicked, prompt:', promptInput.value);
+      if (promptInput.value.trim()) {
+        processObject();
+      } else {
+        showStatus('❌ Please enter a prompt for replacement', 'error');
+      }
+    });
+
+    // Modal cancel button
+    modalCancelBtn.addEventListener('click', hideModal);
+
+    // Close modal on overlay click
+    actionModal.addEventListener('click', (e) => {
+      if (e.target === actionModal) {
+        hideModal();
+      }
+    });
+
+    // Process object (remove or replace)
+    async function processObject() {
+      if (!currentSelectedObject) {
+        console.error('No object selected');
+        return;
+      }
+      
+      if (!selectedAction) {
+        console.error('No action selected');
+        showStatus('❌ Please select an action', 'error');
+        return;
+      }
+      
+      const obj = currentSelectedObject;
+      const action = selectedAction; // Save action before hiding modal
+      
+      hideModal(); // This resets selectedAction to null
+      
+      // Show inpainting loader
+      inpaintingLoader.classList.add('show');
+      
+      let endpoint, requestBody;
+      
+      if (action === 'remove') {
+        loadingText.textContent = 'Removing Object...';
+        loadingSubtext.textContent = 'Using Hybrid Mode (LaMa + Flux Kontext) 🔄';
+        showStatus(`🔄 Removing ${obj.class_name}...`, 'info');
+        
+        endpoint = '/remove-hybrid';
+        requestBody = {
+          image_path: lastUploadResult.image_path,
+          mask_path: obj.mask_url,
+          object_name: obj.class_name
+        };
+      } else if (action === 'replace') {
+        loadingText.textContent = 'Replacing Object...';
+        loadingSubtext.textContent = `Generating: ${promptInput.value} ✨`;
+        showStatus(`🔄 Replacing ${obj.class_name} with "${promptInput.value}"...`, 'info');
+        
+        endpoint = '/replace';
+        requestBody = {
+          image_path: lastUploadResult.image_path,
+          mask_path: obj.mask_url,
+          prompt: promptInput.value.trim(),
+          object_name: obj.class_name,
+          guidance: 4.5
+        };
+      } else {
+        inpaintingLoader.classList.remove('show');
+        showStatus('❌ Invalid action selected', 'error');
+        return;
+      }
+      
+      console.log('Processing with:', { endpoint, action, requestBody });
+      
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody)
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Server error:', errorText);
+          throw new Error(`Processing failed: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log('Result:', result);
+        
+        inpaintingLoader.classList.remove('show');
+        
+        if (result.output_url) {
+          resultPlaceholder.style.display = 'none';
+          resultImage.style.display = 'block';
+          resultImage.src = result.output_url + '?t=' + Date.now();
+          resultContainer.classList.add('show');
+          
+          if (action === 'remove') {
+            const timeInfo = result.total_time ? ` (${result.total_time.toFixed(1)}s)` : '';
+            showStatus(`✅ ${obj.class_name} removed successfully!${timeInfo}`, 'success');
+          } else {
+            const timeInfo = result.inference_time ? ` (${result.inference_time.toFixed(1)}s)` : '';
+            showStatus(`✅ ${obj.class_name} replaced with "${promptInput.value}"!${timeInfo}`, 'success');
+          }
+        } else {
+          throw new Error('No output URL received');
+        }
+      } catch (error) {
+        console.error('Processing error:', error);
+        inpaintingLoader.classList.remove('show');
+        showStatus(`❌ Error: ${error.message}`, 'error');
+      }
     }
 
     // Handle image upload
@@ -745,53 +1120,9 @@
               objBtn.style.boxShadow = '0 2px 8px rgba(102, 126, 234, 0.3)';
             };
             
-            objBtn.onclick = async () => {
-              // Use this object's mask for removal
-              lastUploadResult.mask_path = obj.mask_url;
-              
-              // Show inpainting loader
-              inpaintingLoader.classList.add('show');
-              loadingText.textContent = 'Hybrid Processing...';
-              loadingSubtext.textContent = 'Step 1: LaMa → Step 2: Flux Kontext 🔄';
-              showStatus(`🔄 Removing ${obj.class_name} with Hybrid Mode...`, 'info');
-              objBtn.disabled = true;
-              
-              try {
-                // Always use hybrid endpoint
-                const endpoint = '/remove-hybrid';
-                
-                const removeResponse = await fetch(endpoint, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    image_path: lastUploadResult.image_path,
-                    mask_path: obj.mask_url,
-                    object_name: obj.class_name
-                  })
-                });
-                
-                if (!removeResponse.ok) throw new Error('Removal failed');
-                
-                const removeResult = await removeResponse.json();
-                
-                inpaintingLoader.classList.remove('show');
-                
-                if (removeResult.output_url) {
-                  resultPlaceholder.style.display = 'none';
-                  resultImage.style.display = 'block';
-                  resultImage.src = removeResult.output_url + '?t=' + Date.now();
-                  resultContainer.classList.add('show');
-                  const timeInfo = removeResult.total_time ? ` (${removeResult.total_time.toFixed(1)}s)` : '';
-                  showStatus(`✅ ${obj.class_name} removed successfully using Hybrid Mode!${timeInfo}`, 'success');
-                } else {
-                  throw new Error('No output URL received');
-                }
-              } catch (error) {
-                inpaintingLoader.classList.remove('show');
-                showStatus(`❌ Error: ${error.message}`, 'error');
-              } finally {
-                objBtn.disabled = false;
-              }
+            objBtn.onclick = () => {
+              // Show modal to choose between remove or replace
+              showModal(obj);
             };
             
             detectedObjectsList.appendChild(objBtn);

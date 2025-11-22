@@ -382,7 +382,7 @@ class InpaintingService:
             lama_output_path = str(image_path_obj.parent / f"lama_intermediate_{image_path_obj.name}")
             
             # Dilate mask for LaMa
-            dilated_mask_path = self.dilate_mask(mask_path, dilation_pixels=90)
+            dilated_mask_path = self.dilate_mask(mask_path, dilation_pixels=50)
             
             # Load image and dilated mask
             with open(image_path, 'rb') as f:
@@ -403,6 +403,7 @@ class InpaintingService:
             # Run LaMa model
             lama_output = replicate.run(
                 "allenhooo/lama:cdac78a1bec5b23c07fd29692fb70baa513ea403a39e643c48ec5edadb15fe72",
+                # "bria/eraser",
                 input={
                     "image": image_uri,
                     "mask": mask_uri
@@ -452,7 +453,7 @@ class InpaintingService:
             kontext_output = replicate.run(
                 "black-forest-labs/flux-kontext-pro",
                 input={
-                    "prompt": "remove blur from the image",
+                    "prompt": "remove blurred subject from the image",
                     "input_image": kontext_image_uri,
                     "guidance": "4.5",
                     "output_format": "png"
@@ -507,6 +508,164 @@ class InpaintingService:
         except Exception as e:
             print("=" * 60)
             print(f"ERROR during hybrid inpainting: {e}")
+            print("=" * 60)
+            raise
+    
+    def replace_object(
+        self,
+        image_path: str,
+        mask_path: str,
+        prompt: str,
+        object_name: str = "object",
+        output_path: Optional[str] = None,
+        guidance: float = 4.5
+    ) -> Tuple[str, dict]:
+        """
+        Replace object in image using Flux Kontext Pro with custom prompt.
+        Overlays the mask on the image as white pixels, then uses AI to generate replacement.
+        
+        Args:
+            image_path: Path to the input image
+            mask_path: Path to the mask image
+            prompt: Text prompt describing what to replace the object with
+            object_name: Name of the object being replaced (for logging)
+            output_path: Optional path to save the result
+            guidance: Guidance scale for generation (default: 4.5)
+        
+        Returns:
+            Tuple of (output_image_path, result_info)
+        """
+        if not self.api_token:
+            raise Exception("REPLICATE_API_TOKEN not set. Please set your Replicate API token.")
+        
+        try:
+            start_time = time.time()
+            
+            print("=" * 60)
+            print(f"Replacing '{object_name}' with: {prompt}")
+            print("Using Flux Kontext Pro for replacement...")
+            print("=" * 60)
+            
+            # Dilate the mask to expand it by 90 pixels
+            dilated_mask_path = self.dilate_mask(mask_path, dilation_pixels=90)
+            
+            # Load image and dilated mask
+            image = cv2.imread(image_path)
+            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            mask = cv2.imread(dilated_mask_path, cv2.IMREAD_GRAYSCALE)
+            
+            print(f"Original image shape: {image_rgb.shape}")
+            print(f"Original mask shape: {mask.shape}")
+            
+            # Remove extra dimension if present (e.g., (H, W, 1) -> (H, W))
+            if len(mask.shape) == 3 and mask.shape[2] == 1:
+                mask = mask.squeeze(axis=2)
+                print(f"Squeezed mask to shape: {mask.shape}")
+            
+            # Ensure mask and image have same dimensions
+            if mask.shape[:2] != image_rgb.shape[:2]:
+                print(f"Resizing mask from {mask.shape} to match image {image_rgb.shape[:2]}")
+                mask = cv2.resize(mask, (image_rgb.shape[1], image_rgb.shape[0]))
+            
+            print(f"Final mask shape: {mask.shape}, image shape: {image_rgb.shape}")
+            
+            # Create a copy of the image to draw the mask on
+            masked_image = image_rgb.copy()
+            
+            # Overlay white mask on image (where mask > 127, set to white)
+            for i in range(3):  # RGB channels
+                masked_image[:, :, i] = np.where(mask > 127, 255, image_rgb[:, :, i])
+            
+            masked_image = masked_image.astype(np.uint8)
+            
+            # Convert to PIL Image
+            masked_pil = Image.fromarray(masked_image)
+            
+            # Save the masked input image for debugging
+            image_path_obj = Path(image_path)
+            input_save_path = str(image_path_obj.parent / f"input_replace_{image_path_obj.name}")
+            masked_pil.save(input_save_path)
+            print(f"Saved masked input image to: {input_save_path}")
+            
+            # Convert to base64
+            buffered = io.BytesIO()
+            masked_pil.save(buffered, format="PNG")
+            image_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+            
+            # Create data URI
+            image_uri = f"data:image/png;base64,{image_base64}"
+            
+            print(f"Sending request to Replicate Flux Kontext Pro with prompt: '{prompt}'")
+            
+            # Run Flux Kontext Pro model on Replicate
+            output = replicate.run(
+                "black-forest-labs/flux-kontext-pro",
+                input={
+                    "input_image": image_uri,
+                    "prompt": "remove the white mask by adding " + prompt + " in that area",
+                    "guidance": str(guidance),
+                    "output_format": "png"
+                }
+            )
+            
+            print(f"Replicate output type: {type(output)}")
+            print(f"Replicate output: {output}")
+            
+            # Handle different output types from Replicate
+            if hasattr(output, 'read'):
+                # Direct file-like object with read method
+                result_data = output.read()
+            elif isinstance(output, str):
+                # Direct URL string
+                result_url = output
+                print(f"Downloading result from: {result_url}")
+                response = requests.get(result_url)
+                response.raise_for_status()
+                result_data = response.content
+            elif isinstance(output, list) and len(output) > 0:
+                # List of URLs
+                result_url = output[0]
+                print(f"Downloading result from: {result_url}")
+                response = requests.get(result_url)
+                response.raise_for_status()
+                result_data = response.content
+            else:
+                # FileOutput object - convert to string to get URL
+                result_url = str(output)
+                print(f"Downloading result from: {result_url}")
+                response = requests.get(result_url)
+                response.raise_for_status()
+                result_data = response.content
+            
+            # Save output
+            if output_path is None:
+                image_path_obj = Path(image_path)
+                output_path = str(image_path_obj.parent / f"result_replace_{image_path_obj.name}")
+            
+            with open(output_path, 'wb') as f:
+                f.write(result_data)
+            
+            inference_time = time.time() - start_time
+            
+            print(f"✅ Object replacement completed in {inference_time:.2f}s")
+            print(f"Result saved to: {output_path}")
+            print("=" * 60)
+            
+            result_info = {
+                "success": True,
+                "object_replaced": object_name,
+                "prompt": prompt,
+                "output_path": output_path,
+                "inference_time": inference_time,
+                "model": "flux-kontext-pro",
+                "guidance": guidance
+            }
+            
+            return output_path, result_info
+                
+        except Exception as e:
+            print("=" * 60)
+            print(f"ERROR during object replacement: {e}")
             print("=" * 60)
             raise
 
