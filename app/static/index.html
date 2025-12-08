@@ -784,6 +784,10 @@
           <div class="modal-btn-icon">✨</div>
           <div>Replace</div>
         </button>
+        <button class="modal-btn" id="furnitureBtn">
+          <div class="modal-btn-icon">🪑</div>
+          <div>Custom Furniture</div>
+        </button>
       </div>
 
       <div class="prompt-input-container" id="promptContainer">
@@ -796,6 +800,58 @@
           class="prompt-input" 
           placeholder="e.g., a red sports car, a modern lamp, a tree..."
         />
+      </div>
+
+      <div class="prompt-input-container" id="furnitureContainer">
+        <label class="prompt-label" for="furnitureInput">
+          Upload furniture image
+        </label>
+        <input 
+          type="file" 
+          id="furnitureInput" 
+          accept="image/*"
+          style="display: none;"
+        />
+        <label for="furnitureInput" style="
+          display: block;
+          padding: 12px 15px;
+          border: 2px dashed #e2e8f0;
+          border-radius: 10px;
+          text-align: center;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          background: #f7fafc;
+          color: #4a5568;
+          font-weight: 500;
+        " id="furnitureLabel">
+          📁 Choose Furniture Image
+        </label>
+        <div id="furniturePreview" style="margin-top: 10px; display: none;">
+          <img id="furniturePreviewImg" style="max-width: 100%; max-height: 150px; border-radius: 8px; border: 2px solid #e2e8f0;" />
+        </div>
+        
+        <!-- API Version Toggle -->
+        <div style="margin-top: 15px; padding: 10px; background: #f0f4f8; border-radius: 8px;">
+          <label class="prompt-label" style="margin-bottom: 8px; display: block;">
+            Select API Version
+          </label>
+          <div style="display: flex; gap: 10px;">
+            <label style="display: flex; align-items: center; cursor: pointer; padding: 8px 12px; background: white; border-radius: 6px; border: 2px solid #e2e8f0; flex: 1;">
+              <input type="radio" name="furnitureApiVersion" value="v1" checked style="margin-right: 8px;">
+              <div>
+                <div style="font-weight: 600; font-size: 13px;">V1 - Kontext dev</div>
+                <div style="font-size: 11px; color: #718096;">Places furniture first</div>
+              </div>
+            </label>
+            <label style="display: flex; align-items: center; cursor: pointer; padding: 8px 12px; background: white; border-radius: 6px; border: 2px solid #e2e8f0; flex: 1;">
+              <input type="radio" name="furnitureApiVersion" value="v2" style="margin-right: 8px;">
+              <div>
+                <div style="font-weight: 600; font-size: 13px;">V2 - Flux 2 Dev</div>
+                <div style="font-size: 11px; color: #718096;">Sends images separately</div>
+              </div>
+            </label>
+          </div>
+        </div>
       </div>
 
       <div class="modal-footer">
@@ -828,8 +884,14 @@
     const modalObjectName = document.getElementById('modalObjectName');
     const removeBtn = document.getElementById('removeBtn');
     const replaceBtn = document.getElementById('replaceBtn');
+    const furnitureBtn = document.getElementById('furnitureBtn');
     const promptContainer = document.getElementById('promptContainer');
     const promptInput = document.getElementById('promptInput');
+    const furnitureContainer = document.getElementById('furnitureContainer');
+    const furnitureInput = document.getElementById('furnitureInput');
+    const furniturePreview = document.getElementById('furniturePreview');
+    const furniturePreviewImg = document.getElementById('furniturePreviewImg');
+    const furnitureLabel = document.getElementById('furnitureLabel');
     const modalCancelBtn = document.getElementById('modalCancelBtn');
     const modalConfirmBtn = document.getElementById('modalConfirmBtn');
 
@@ -838,7 +900,8 @@
     let inpaintingModel = 'hybrid'; // Always use hybrid mode
     let lastUploadResult = null; // Store upload result for inpainting
     let currentSelectedObject = null; // Store currently selected object
-    let selectedAction = null; // 'remove' or 'replace'
+    let selectedAction = null; // 'remove', 'replace', or 'furniture'
+    let furnitureImageData = null; // Store furniture image as base64
 
     // Status helper functions
     function showStatus(message, type = 'info') {
@@ -854,10 +917,15 @@
     function showModal(obj) {
       currentSelectedObject = obj;
       selectedAction = null;
+      furnitureImageData = null;
       modalObjectName.textContent = obj.class_name;
       promptContainer.classList.remove('show');
+      furnitureContainer.classList.remove('show');
       modalConfirmBtn.style.display = 'none';
       promptInput.value = '';
+      furnitureInput.value = '';
+      furniturePreview.style.display = 'none';
+      furnitureLabel.textContent = '📁 Choose Furniture Image';
       actionModal.classList.add('show');
     }
 
@@ -865,6 +933,7 @@
       actionModal.classList.remove('show');
       currentSelectedObject = null;
       selectedAction = null;
+      furnitureImageData = null;
     }
 
     // Remove button handler
@@ -881,18 +950,49 @@
       selectedAction = 'replace';
       console.log('Selected action set to:', selectedAction);
       promptContainer.classList.add('show');
+      furnitureContainer.classList.remove('show');
       modalConfirmBtn.style.display = 'block';
       promptInput.focus();
     });
 
+    // Furniture button handler
+    furnitureBtn.addEventListener('click', () => {
+      console.log('Furniture button clicked');
+      selectedAction = 'furniture';
+      console.log('Selected action set to:', selectedAction);
+      furnitureContainer.classList.add('show');
+      promptContainer.classList.remove('show');
+      modalConfirmBtn.style.display = 'block';
+    });
+
+    // Furniture input handler
+    furnitureInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        furnitureImageData = event.target.result;
+        furniturePreviewImg.src = furnitureImageData;
+        furniturePreview.style.display = 'block';
+        furnitureLabel.textContent = `✅ ${file.name}`;
+        console.log('Furniture image loaded');
+      };
+      reader.readAsDataURL(file);
+    });
+
     // Modal confirm button
     modalConfirmBtn.addEventListener('click', () => {
-      console.log('Confirm button clicked, prompt:', promptInput.value);
-      if (promptInput.value.trim()) {
-        processObject();
-      } else {
+      console.log('Confirm button clicked');
+      if (selectedAction === 'replace' && !promptInput.value.trim()) {
         showStatus('❌ Please enter a prompt for replacement', 'error');
+        return;
       }
+      if (selectedAction === 'furniture' && !furnitureImageData) {
+        showStatus('❌ Please upload a furniture image', 'error');
+        return;
+      }
+      processObject();
     });
 
     // Modal cancel button
@@ -905,7 +1005,7 @@
       }
     });
 
-    // Process object (remove or replace)
+    // Process object (remove, replace, or furniture)
     async function processObject() {
       if (!currentSelectedObject) {
         console.error('No object selected');
@@ -920,6 +1020,8 @@
       
       const obj = currentSelectedObject;
       const action = selectedAction; // Save action before hiding modal
+      const savedPrompt = promptInput.value.trim();
+      const savedFurnitureData = furnitureImageData;
       
       hideModal(); // This resets selectedAction to null
       
@@ -941,14 +1043,37 @@
         };
       } else if (action === 'replace') {
         loadingText.textContent = 'Replacing Object...';
-        loadingSubtext.textContent = `Generating: ${promptInput.value} ✨`;
-        showStatus(`🔄 Replacing ${obj.class_name} with "${promptInput.value}"...`, 'info');
+        loadingSubtext.textContent = `Generating: ${savedPrompt} ✨`;
+        showStatus(`🔄 Replacing ${obj.class_name} with "${savedPrompt}"...`, 'info');
         
         endpoint = '/replace';
         requestBody = {
           image_path: lastUploadResult.image_path,
           mask_path: obj.mask_url,
-          prompt: promptInput.value.trim(),
+          prompt: savedPrompt,
+          object_name: obj.class_name,
+          guidance: 4.5
+        };
+      } else if (action === 'furniture') {
+        // Get selected API version
+        const apiVersion = document.querySelector('input[name="furnitureApiVersion"]:checked').value;
+        
+        if (apiVersion === 'v2') {
+          loadingText.textContent = 'Placing Custom Furniture (V2)...';
+          loadingSubtext.textContent = 'Using Flux 2 Dev - Sending images separately 🪑';
+          showStatus(`🔄 [V2] Replacing ${obj.class_name} with custom furniture...`, 'info');
+          endpoint = '/replace-furniture-v2';
+        } else {
+          loadingText.textContent = 'Placing Custom Furniture (V1)...';
+          loadingSubtext.textContent = 'Using Kontext Dev - Blending furniture 🪑';
+          showStatus(`🔄 [V1] Replacing ${obj.class_name} with custom furniture...`, 'info');
+          endpoint = '/replace-furniture';
+        }
+        
+        requestBody = {
+          image_path: lastUploadResult.image_path,
+          mask_path: obj.mask_url,
+          furniture_image: savedFurnitureData,
           object_name: obj.class_name,
           guidance: 4.5
         };
@@ -987,9 +1112,13 @@
           if (action === 'remove') {
             const timeInfo = result.total_time ? ` (${result.total_time.toFixed(1)}s)` : '';
             showStatus(`✅ ${obj.class_name} removed successfully!${timeInfo}`, 'success');
-          } else {
+          } else if (action === 'replace') {
             const timeInfo = result.inference_time ? ` (${result.inference_time.toFixed(1)}s)` : '';
-            showStatus(`✅ ${obj.class_name} replaced with "${promptInput.value}"!${timeInfo}`, 'success');
+            showStatus(`✅ ${obj.class_name} replaced with "${savedPrompt}"!${timeInfo}`, 'success');
+          } else if (action === 'furniture') {
+            const timeInfo = result.inference_time ? ` (${result.inference_time.toFixed(1)}s)` : '';
+            const versionInfo = result.version === 'v2' ? ' [V2]' : ' [V1]';
+            showStatus(`✅${versionInfo} ${obj.class_name} replaced with custom furniture!${timeInfo}`, 'success');
           }
         } else {
           throw new Error('No output URL received');

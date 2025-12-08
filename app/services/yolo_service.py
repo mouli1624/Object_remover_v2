@@ -305,6 +305,12 @@ class YOLOService:
         detected_objects = []
         has_masks = results[0].masks is not None
         
+        print(f"[YOLO] Has segmentation masks: {has_masks}")
+        if has_masks:
+            print(f"[YOLO] Using REAL segmentation masks from YOLO")
+        else:
+            print(f"[YOLO] WARNING: No segmentation masks! Using bounding box rectangles as fallback!")
+        
         if results[0].boxes is not None and len(results[0].boxes) > 0:
             boxes = results[0].boxes.xyxy.cpu().numpy()
             classes = results[0].boxes.cls.cpu().numpy()

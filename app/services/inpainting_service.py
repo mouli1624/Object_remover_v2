@@ -668,6 +668,415 @@ class InpaintingService:
             print(f"ERROR during object replacement: {e}")
             print("=" * 60)
             raise
+    
+    def replace_with_custom_furniture(
+        self,
+        image_path: str,
+        mask_path: str,
+        furniture_path: str,
+        object_name: str = "object",
+        output_path: Optional[str] = None,
+        guidance: float = 4.5
+    ) -> Tuple[str, dict]:
+        """
+        Replace object with custom furniture image.
+        Enlarges mask by 100px on each side, places furniture at center, then uses Flux Kontext.
+        
+        Args:
+            image_path: Path to the input image
+            mask_path: Path to the mask image
+            furniture_path: Path to the furniture image to place
+            object_name: Name of the object being replaced (for logging)
+            output_path: Optional path to save the result
+            guidance: Guidance scale for generation (default: 4.5)
+        
+        Returns:
+            Tuple of (output_image_path, result_info)
+        """
+        if not self.api_token:
+            raise Exception("REPLICATE_API_TOKEN not set. Please set your Replicate API token.")
+        
+        try:
+            start_time = time.time()
+            
+            print("=" * 60)
+            print(f"Replacing '{object_name}' with custom furniture")
+            print("Using Flux Kontext Pro for blending...")
+            print("=" * 60)
+            
+            # Load original image
+            image = cv2.imread(image_path)
+            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            h, w = image_rgb.shape[:2]
+            
+            # Load mask
+            mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+            
+            # Remove extra dimension if present
+            if len(mask.shape) == 3 and mask.shape[2] == 1:
+                mask = mask.squeeze(axis=2)
+            
+            # Ensure mask and image have same dimensions
+            if mask.shape[:2] != (h, w):
+                mask = cv2.resize(mask, (w, h))
+            
+            # Binarize mask
+            _, mask_binary = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
+            
+            print(f"Original mask shape: {mask_binary.shape}")
+            print(f"Original mask non-zero pixels: {cv2.countNonZero(mask_binary)}")
+            
+            # Save original mask for debugging
+            image_path_obj = Path(image_path)
+            original_mask_debug_path = str(image_path_obj.parent / f"debug_original_mask_{image_path_obj.name}")
+            cv2.imwrite(original_mask_debug_path, mask_binary)
+            print(f"Saved original mask (before dilation) to: {original_mask_debug_path}")
+            
+            # Dilate the mask by 100 pixels on all sides
+            enlarge_pixels = 90
+            kernel_size = enlarge_pixels * 2 + 1
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+            dilated_mask = cv2.dilate(mask_binary, kernel, iterations=1)
+            
+            print(f"Dilated mask by {enlarge_pixels} pixels on all sides")
+            print(f"Dilated mask non-zero pixels: {cv2.countNonZero(dilated_mask)}")
+            
+            # Find center of the dilated mask using moments
+            M = cv2.moments(dilated_mask)
+            if M["m00"] == 0:
+                raise Exception("Empty dilated mask")
+            
+            center_x = int(M["m10"] / M["m00"])
+            center_y = int(M["m01"] / M["m00"])
+            
+            print(f"Center of dilated mask: ({center_x}, {center_y})")
+            
+            # Find bounding box of dilated mask to determine max furniture size
+            coords = cv2.findNonZero(dilated_mask)
+            x, y, mask_w, mask_h = cv2.boundingRect(coords)
+            
+            print(f"Dilated mask bounding box: x={x}, y={y}, w={mask_w}, h={mask_h}")
+            
+            # Load furniture image
+            furniture = cv2.imread(furniture_path)
+            furniture_rgb = cv2.cvtColor(furniture, cv2.COLOR_BGR2RGB)
+            furn_h, furn_w = furniture_rgb.shape[:2]
+            
+            print(f"Original furniture size: {furn_w}x{furn_h}")
+            
+            # Resize furniture to fit inside the dilated mask (70% of bounding box for safety)
+            scale = min(mask_w / furn_w, mask_h / furn_h) * 0.85
+            new_furn_w = int(furn_w * scale)
+            new_furn_h = int(furn_h * scale)
+            
+            furniture_resized = cv2.resize(furniture_rgb, (new_furn_w, new_furn_h), interpolation=cv2.INTER_AREA)
+            
+            print(f"Resized furniture to: {new_furn_w}x{new_furn_h}")
+            
+            # Create composite image with furniture placed at center of dilated mask
+            composite = image_rgb.copy()
+            
+            # Calculate top-left position to center furniture at mask center
+            paste_x = center_x - new_furn_w // 2
+            paste_y = center_y - new_furn_h // 2
+            
+            # Ensure furniture stays within image bounds
+            paste_x = max(0, min(paste_x, w - new_furn_w))
+            paste_y = max(0, min(paste_y, h - new_furn_h))
+            
+            print(f"Placing furniture at: ({paste_x}, {paste_y})")
+            
+            # STEP 1: First overlay the DILATED MASK as BLACK on the original image
+            # This creates the black masked area where furniture will be placed
+            masked_composite = image_rgb.copy()
+            for i in range(3):  # RGB channels
+                masked_composite[:, :, i] = np.where(dilated_mask > 127, 0, image_rgb[:, :, i])
+            
+            image_path_obj = Path(image_path)
+            
+            # Save the black mask overlay for debugging
+            black_mask_path = str(image_path_obj.parent / f"black_mask_overlay_{image_path_obj.name}")
+            cv2.imwrite(black_mask_path, cv2.cvtColor(masked_composite, cv2.COLOR_RGB2BGR))
+            print(f"Saved black mask overlay to: {black_mask_path}")
+            
+            # STEP 2: Now place furniture ON TOP of the black masked area (at center of dilated mask)
+            paste_x_end = min(paste_x + new_furn_w, w)
+            paste_y_end = min(paste_y + new_furn_h, h)
+            actual_furn_w = paste_x_end - paste_x
+            actual_furn_h = paste_y_end - paste_y
+            
+            # Place furniture directly on the masked composite (on top of black area)
+            masked_composite[paste_y:paste_y_end, paste_x:paste_x_end] = furniture_resized[:actual_furn_h, :actual_furn_w]
+            
+            # Save the final composite (black mask + furniture on top)
+            composite_save_path = str(image_path_obj.parent / f"composite_furniture_{image_path_obj.name}")
+            cv2.imwrite(composite_save_path, cv2.cvtColor(masked_composite, cv2.COLOR_RGB2BGR))
+            print(f"Saved composite (black mask + furniture) to: {composite_save_path}")
+            
+            # Save the dilated mask for reference
+            dilated_mask_path = str(image_path_obj.parent / f"dilated_mask_{image_path_obj.name}")
+            cv2.imwrite(dilated_mask_path, dilated_mask)
+            print(f"Saved dilated mask to: {dilated_mask_path}")
+            
+            masked_composite = masked_composite.astype(np.uint8)
+            
+            # Convert to PIL Image
+            masked_pil = Image.fromarray(masked_composite)
+            
+            # Convert to base64
+            buffered = io.BytesIO()
+            masked_pil.save(buffered, format="PNG")
+            image_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+            
+            # Create data URI
+            image_uri = f"data:image/png;base64,{image_base64}"
+            
+            print("Sending request to Replicate Flux Kontext Pro for blending...")
+            print(f"Dilated mask area will guide the blending process")
+            
+            # Run Flux Kontext Pro to blend the furniture naturally
+            output = replicate.run(
+                "black-forest-labs/flux-kontext-dev",
+                input={
+                    "input_image": image_uri,
+                    "prompt": "A modern living room with natural lighting and neutral beige walls. Place the provided furniture image naturally inside the masked area. Ensure correct proportions, correct perspective matching the room, and realistic shadows. The furniture should look like it belongs in the room, aligned with the floor, not oversized or too small. Preserve room structure, lighting consistency, and keep all surrounding objects unchange.",
+            
+                    "output_format": "png"
+                }
+            )
+            
+            print(f"Replicate output type: {type(output)}")
+            print(f"Replicate output: {output}")
+            
+            # Handle different output types from Replicate
+            if hasattr(output, 'read'):
+                result_data = output.read()
+            elif isinstance(output, str):
+                result_url = output
+                print(f"Downloading result from: {result_url}")
+                response = requests.get(result_url)
+                response.raise_for_status()
+                result_data = response.content
+            elif isinstance(output, list) and len(output) > 0:
+                result_url = output[0]
+                print(f"Downloading result from: {result_url}")
+                response = requests.get(result_url)
+                response.raise_for_status()
+                result_data = response.content
+            else:
+                result_url = str(output)
+                print(f"Downloading result from: {result_url}")
+                response = requests.get(result_url)
+                response.raise_for_status()
+                result_data = response.content
+            
+            # Save output
+            if output_path is None:
+                output_path = str(image_path_obj.parent / f"result_furniture_{image_path_obj.name}")
+            
+            with open(output_path, 'wb') as f:
+                f.write(result_data)
+            
+            inference_time = time.time() - start_time
+            
+            print(f"✅ Custom furniture replacement completed in {inference_time:.2f}s")
+            print(f"Result saved to: {output_path}")
+            print("=" * 60)
+            
+            result_info = {
+                "success": True,
+                "object_replaced": object_name,
+                "furniture_placed": True,
+                "output_path": output_path,
+                "inference_time": inference_time,
+                "model": "flux-kontext-pro",
+                "guidance": guidance,
+                "furniture_size": f"{new_furn_w}x{new_furn_h}",
+                "placement_position": f"({paste_x}, {paste_y})"
+            }
+            
+            return output_path, result_info
+                
+        except Exception as e:
+            print("=" * 60)
+            print(f"ERROR during custom furniture replacement: {e}")
+            print("=" * 60)
+            raise
+
+    def replace_with_custom_furniture_v2(
+        self,
+        image_path: str,
+        mask_path: str,
+        furniture_path: str,
+        object_name: str = "object",
+        output_path: Optional[str] = None
+    ) -> Tuple[str, dict]:
+        """
+        Replace object with custom furniture image using Flux 2 Dev.
+        Sends mask-overlayed image and furniture image separately.
+        
+        Args:
+            image_path: Path to the input image
+            mask_path: Path to the mask image
+            furniture_path: Path to the furniture image to place
+            object_name: Name of the object being replaced (for logging)
+            output_path: Optional path to save the result
+        
+        Returns:
+            Tuple of (output_image_path, result_info)
+        """
+        if not self.api_token:
+            raise Exception("REPLICATE_API_TOKEN not set. Please set your Replicate API token.")
+        
+        try:
+            start_time = time.time()
+            
+            print("=" * 60)
+            print(f"[V2] Replacing '{object_name}' with custom furniture")
+            print("Using Flux 2 Dev with separate images...")
+            print("=" * 60)
+            
+            # Load original image
+            image = cv2.imread(image_path)
+            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            h, w = image_rgb.shape[:2]
+            
+            # Load mask
+            mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+            
+            # Remove extra dimension if present
+            if len(mask.shape) == 3 and mask.shape[2] == 1:
+                mask = mask.squeeze(axis=2)
+            
+            # Ensure mask and image have same dimensions
+            if mask.shape[:2] != (h, w):
+                mask = cv2.resize(mask, (w, h))
+            
+            # Binarize mask
+            _, mask_binary = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
+            
+            print(f"Original mask shape: {mask_binary.shape}")
+            print(f"Original mask non-zero pixels: {cv2.countNonZero(mask_binary)}")
+            
+            # Dilate the mask by 90 pixels on all sides
+            enlarge_pixels = 90
+            kernel_size = enlarge_pixels * 2 + 1
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+            dilated_mask = cv2.dilate(mask_binary, kernel, iterations=1)
+            
+            print(f"Dilated mask by {enlarge_pixels} pixels on all sides")
+            print(f"Dilated mask non-zero pixels: {cv2.countNonZero(dilated_mask)}")
+            
+            # Overlay the DILATED MASK as BLACK on the original image
+            masked_image = image_rgb.copy()
+            for i in range(3):  # RGB channels
+                masked_image[:, :, i] = np.where(dilated_mask > 127, 0, image_rgb[:, :, i])
+            
+            image_path_obj = Path(image_path)
+            
+            # Save the masked image for debugging
+            masked_image_path = str(image_path_obj.parent / f"v2_masked_{image_path_obj.name}")
+            cv2.imwrite(masked_image_path, cv2.cvtColor(masked_image, cv2.COLOR_RGB2BGR))
+            print(f"Saved masked image to: {masked_image_path}")
+            
+            # Convert masked image to base64 data URI
+            masked_pil = Image.fromarray(masked_image)
+            buffered_masked = io.BytesIO()
+            masked_pil.save(buffered_masked, format="PNG")
+            masked_base64 = base64.b64encode(buffered_masked.getvalue()).decode('utf-8')
+            masked_uri = f"data:image/png;base64,{masked_base64}"
+            
+            # Load and convert furniture image to base64 data URI
+            furniture = cv2.imread(furniture_path)
+            furniture_rgb = cv2.cvtColor(furniture, cv2.COLOR_BGR2RGB)
+            furniture_pil = Image.fromarray(furniture_rgb)
+            buffered_furniture = io.BytesIO()
+            furniture_pil.save(buffered_furniture, format="PNG")
+            furniture_base64 = base64.b64encode(buffered_furniture.getvalue()).decode('utf-8')
+            furniture_uri = f"data:image/png;base64,{furniture_base64}"
+            
+            print(f"Furniture image size: {furniture_rgb.shape[1]}x{furniture_rgb.shape[0]}")
+            
+            # Save dilated mask for reference
+            dilated_mask_path = str(image_path_obj.parent / f"v2_dilated_mask_{image_path_obj.name}")
+            cv2.imwrite(dilated_mask_path, dilated_mask)
+            print(f"Saved dilated mask to: {dilated_mask_path}")
+            
+            print("Sending request to Replicate Flux 2 Dev...")
+            print("Sending 2 images: masked room + furniture")
+            
+            # Run Flux 2 Dev with both images
+            output = replicate.run(
+                "black-forest-labs/flux-2-dev",
+                input={
+                    "prompt": "Place the furniture from the second image into the black masked area of the first image. Ensure correct proportions, perspective matching the room, and realistic shadows. The furniture should look natural, aligned with the floor, properly sized. Preserve room structure, lighting consistency, and keep all surrounding objects unchanged.",
+                    "aspect_ratio": "match_input_image",
+                    "input_images": [masked_uri, furniture_uri],
+                    "output_format": "png"
+                }
+            )
+            
+            print(f"Replicate output type: {type(output)}")
+            print(f"Replicate output: {output}")
+            
+            # Handle different output types from Replicate
+            if hasattr(output, 'read'):
+                result_data = output.read()
+            elif hasattr(output, 'url'):
+                result_url = output.url()
+                print(f"Downloading result from: {result_url}")
+                response = requests.get(result_url)
+                response.raise_for_status()
+                result_data = response.content
+            elif isinstance(output, str):
+                result_url = output
+                print(f"Downloading result from: {result_url}")
+                response = requests.get(result_url)
+                response.raise_for_status()
+                result_data = response.content
+            elif isinstance(output, list) and len(output) > 0:
+                result_url = output[0]
+                print(f"Downloading result from: {result_url}")
+                response = requests.get(result_url)
+                response.raise_for_status()
+                result_data = response.content
+            else:
+                result_url = str(output)
+                print(f"Downloading result from: {result_url}")
+                response = requests.get(result_url)
+                response.raise_for_status()
+                result_data = response.content
+            
+            # Save output
+            if output_path is None:
+                output_path = str(image_path_obj.parent / f"result_furniture_v2_{image_path_obj.name}")
+            
+            with open(output_path, 'wb') as f:
+                f.write(result_data)
+            
+            inference_time = time.time() - start_time
+            
+            print(f"✅ [V2] Custom furniture replacement completed in {inference_time:.2f}s")
+            print(f"Result saved to: {output_path}")
+            print("=" * 60)
+            
+            result_info = {
+                "success": True,
+                "object_replaced": object_name,
+                "furniture_placed": True,
+                "output_path": output_path,
+                "inference_time": inference_time,
+                "model": "flux-2-dev",
+                "version": "v2"
+            }
+            
+            return output_path, result_info
+                
+        except Exception as e:
+            print("=" * 60)
+            print(f"ERROR during custom furniture replacement v2: {e}")
+            print("=" * 60)
+            raise
 
 
 # Singleton instance

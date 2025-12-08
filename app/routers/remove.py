@@ -22,6 +22,13 @@ class ReplaceObjectRequest(BaseModel):
     object_name: str = "object"
     guidance: float = 4.5
 
+class ReplaceFurnitureRequest(BaseModel):
+    image_path: str
+    mask_path: str
+    furniture_image: str  # Base64 encoded image
+    object_name: str = "object"
+    guidance: float = 4.5
+
 @router.post("/remove")
 async def remove_object(request: RemoveObjectRequest):
     """
@@ -244,3 +251,136 @@ async def replace_object(request: ReplaceObjectRequest):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Object replacement failed: {str(e)}")
+
+@router.post("/replace-furniture")
+async def replace_with_furniture(request: ReplaceFurnitureRequest):
+    """
+    Replace an object with custom furniture image.
+    Enlarges mask by 100px on each side, places furniture at center, then uses Flux Kontext.
+    """
+    try:
+        from datetime import datetime
+        import base64
+        
+        inpainting_service = get_inpainting_service()
+        
+        # Convert URL paths to filesystem paths if needed
+        image_path = request.image_path
+        mask_path = request.mask_path
+        
+        if image_path.startswith('uploads/'):
+            image_path = 'app/static/' + image_path
+        if mask_path.startswith('uploads/'):
+            mask_path = 'app/static/' + mask_path
+        
+        # Decode furniture image from base64 and save temporarily
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        furniture_filename = f"furniture_{timestamp}.png"
+        furniture_path = Path("app/static/uploads") / furniture_filename
+        
+        # Remove data URI prefix if present
+        furniture_image = request.furniture_image
+        if ',' in furniture_image:
+            furniture_image = furniture_image.split(',')[1]
+        
+        furniture_data = base64.b64decode(furniture_image)
+        with open(furniture_path, 'wb') as f:
+            f.write(furniture_data)
+        
+        print(f"[FURNITURE] Saved furniture image to: {furniture_path}")
+        
+        # Perform furniture replacement
+        output_path, result_info = inpainting_service.replace_with_custom_furniture(
+            image_path=image_path,
+            mask_path=mask_path,
+            furniture_path=str(furniture_path),
+            object_name=request.object_name,
+            guidance=request.guidance
+        )
+        
+        # Convert path to URL
+        if "app/static/" in output_path:
+            output_url = "/" + output_path.replace("app/static/", "")
+        else:
+            output_url = "/uploads/" + Path(output_path).name
+        
+        print(f"[FURNITURE] Output path: {output_path}")
+        print(f"[FURNITURE] Output URL: {output_url}")
+        
+        return {
+            "status": "success",
+            "output_url": output_url,
+            "output_path": output_path,
+            **result_info
+        }
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Furniture replacement failed: {str(e)}")
+
+@router.post("/replace-furniture-v2")
+async def replace_with_furniture_v2(request: ReplaceFurnitureRequest):
+    """
+    Replace an object with custom furniture image using Flux 2 Dev.
+    Sends mask-overlayed image and furniture image separately.
+    """
+    try:
+        from datetime import datetime
+        import base64
+        
+        inpainting_service = get_inpainting_service()
+        
+        # Convert URL paths to filesystem paths if needed
+        image_path = request.image_path
+        mask_path = request.mask_path
+        
+        if image_path.startswith('uploads/'):
+            image_path = 'app/static/' + image_path
+        if mask_path.startswith('uploads/'):
+            mask_path = 'app/static/' + mask_path
+        
+        # Decode furniture image from base64 and save temporarily
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        furniture_filename = f"furniture_v2_{timestamp}.png"
+        furniture_path = Path("app/static/uploads") / furniture_filename
+        
+        # Remove data URI prefix if present
+        furniture_image = request.furniture_image
+        if ',' in furniture_image:
+            furniture_image = furniture_image.split(',')[1]
+        
+        furniture_data = base64.b64decode(furniture_image)
+        with open(furniture_path, 'wb') as f:
+            f.write(furniture_data)
+        
+        print(f"[FURNITURE V2] Saved furniture image to: {furniture_path}")
+        
+        # Perform furniture replacement using v2 (Flux 2 Dev)
+        output_path, result_info = inpainting_service.replace_with_custom_furniture_v2(
+            image_path=image_path,
+            mask_path=mask_path,
+            furniture_path=str(furniture_path),
+            object_name=request.object_name
+        )
+        
+        # Convert path to URL
+        if "app/static/" in output_path:
+            output_url = "/" + output_path.replace("app/static/", "")
+        else:
+            output_url = "/uploads/" + Path(output_path).name
+        
+        print(f"[FURNITURE V2] Output path: {output_path}")
+        print(f"[FURNITURE V2] Output URL: {output_url}")
+        
+        return {
+            "status": "success",
+            "output_url": output_url,
+            "output_path": output_path,
+            **result_info
+        }
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Furniture replacement v2 failed: {str(e)}")
