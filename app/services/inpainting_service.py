@@ -913,11 +913,11 @@ class InpaintingService:
     ) -> Tuple[str, dict]:
         """
         Replace object with custom furniture image using Flux 2 Dev.
-        Sends mask-overlayed image and furniture image separately.
+        Sends original image and furniture image separately.
         
         Args:
             image_path: Path to the input image
-            mask_path: Path to the mask image
+            mask_path: Path to the mask image (not used in v2, kept for compatibility)
             furniture_path: Path to the furniture image to place
             object_name: Name of the object being replaced (for logging)
             output_path: Optional path to save the result
@@ -933,7 +933,7 @@ class InpaintingService:
             
             print("=" * 60)
             print(f"[V2] Replacing '{object_name}' with custom furniture")
-            print("Using Flux 2 Dev with separate images...")
+            print("Using Flux 2 Dev with original image + furniture...")
             print("=" * 60)
             
             # Load original image
@@ -941,77 +941,61 @@ class InpaintingService:
             image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             h, w = image_rgb.shape[:2]
             
-            # Load mask
-            mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
-            
-            # Remove extra dimension if present
-            if len(mask.shape) == 3 and mask.shape[2] == 1:
-                mask = mask.squeeze(axis=2)
-            
-            # Ensure mask and image have same dimensions
-            if mask.shape[:2] != (h, w):
-                mask = cv2.resize(mask, (w, h))
-            
-            # Binarize mask
-            _, mask_binary = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
-            
-            print(f"Original mask shape: {mask_binary.shape}")
-            print(f"Original mask non-zero pixels: {cv2.countNonZero(mask_binary)}")
-            
-            # Dilate the mask by 90 pixels on all sides
-            enlarge_pixels = 90
-            kernel_size = enlarge_pixels * 2 + 1
-            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
-            dilated_mask = cv2.dilate(mask_binary, kernel, iterations=1)
-            
-            print(f"Dilated mask by {enlarge_pixels} pixels on all sides")
-            print(f"Dilated mask non-zero pixels: {cv2.countNonZero(dilated_mask)}")
-            
-            # Overlay the DILATED MASK as BLACK on the original image
-            masked_image = image_rgb.copy()
-            for i in range(3):  # RGB channels
-                masked_image[:, :, i] = np.where(dilated_mask > 127, 0, image_rgb[:, :, i])
-            
             image_path_obj = Path(image_path)
             
-            # Save the masked image for debugging
-            masked_image_path = str(image_path_obj.parent / f"v2_masked_{image_path_obj.name}")
-            cv2.imwrite(masked_image_path, cv2.cvtColor(masked_image, cv2.COLOR_RGB2BGR))
-            print(f"Saved masked image to: {masked_image_path}")
+            # Resize original image to reduce size while maintaining aspect ratio
+            max_dimension = 1024
+            if max(h, w) > max_dimension:
+                scale = max_dimension / max(h, w)
+                new_w = int(w * scale)
+                new_h = int(h * scale)
+                image_rgb = cv2.resize(image_rgb, (new_w, new_h), interpolation=cv2.INTER_AREA)
+                print(f"Original image resized from {w}x{h} to {new_w}x{new_h}")
+            else:
+                print(f"Original image size: {w}x{h} (no resize needed)")
             
-            # Convert masked image to base64 data URI
-            masked_pil = Image.fromarray(masked_image)
-            buffered_masked = io.BytesIO()
-            masked_pil.save(buffered_masked, format="PNG")
-            masked_base64 = base64.b64encode(buffered_masked.getvalue()).decode('utf-8')
-            masked_uri = f"data:image/png;base64,{masked_base64}"
+            # Convert original image to base64 data URI
+            original_pil = Image.fromarray(image_rgb)
+            buffered_original = io.BytesIO()
+            original_pil.save(buffered_original, format="PNG")
+            original_base64 = base64.b64encode(buffered_original.getvalue()).decode('utf-8')
+            original_uri = f"data:image/png;base64,{original_base64}"
             
             # Load and convert furniture image to base64 data URI
             furniture = cv2.imread(furniture_path)
             furniture_rgb = cv2.cvtColor(furniture, cv2.COLOR_BGR2RGB)
+            furn_h, furn_w = furniture_rgb.shape[:2]
+            
+            # Resize furniture image to reduce size while maintaining aspect ratio
+            max_dimension = 1024
+            if max(furn_h, furn_w) > max_dimension:
+                scale = max_dimension / max(furn_h, furn_w)
+                new_furn_w = int(furn_w * scale)
+                new_furn_h = int(furn_h * scale)
+                furniture_rgb = cv2.resize(furniture_rgb, (new_furn_w, new_furn_h), interpolation=cv2.INTER_AREA)
+                print(f"Furniture image resized from {furn_w}x{furn_h} to {new_furn_w}x{new_furn_h}")
+            else:
+                print(f"Furniture image size: {furn_w}x{furn_h} (no resize needed)")
+            
             furniture_pil = Image.fromarray(furniture_rgb)
             buffered_furniture = io.BytesIO()
             furniture_pil.save(buffered_furniture, format="PNG")
             furniture_base64 = base64.b64encode(buffered_furniture.getvalue()).decode('utf-8')
             furniture_uri = f"data:image/png;base64,{furniture_base64}"
             
-            print(f"Furniture image size: {furniture_rgb.shape[1]}x{furniture_rgb.shape[0]}")
-            
-            # Save dilated mask for reference
-            dilated_mask_path = str(image_path_obj.parent / f"v2_dilated_mask_{image_path_obj.name}")
-            cv2.imwrite(dilated_mask_path, dilated_mask)
-            print(f"Saved dilated mask to: {dilated_mask_path}")
-            
             print("Sending request to Replicate Flux 2 Dev...")
-            print("Sending 2 images: masked room + furniture")
+            print("Sending 2 images: original room + furniture")
             
             # Run Flux 2 Dev with both images
+            if object_name=="couch":
+                object_name="sofa"
+
             output = replicate.run(
                 "black-forest-labs/flux-2-dev",
                 input={
-                    "prompt": "Place the furniture from the second image into the black masked area of the first image. Ensure correct proportions, perspective matching the room, and realistic shadows. The furniture should look natural, aligned with the floor, properly sized. Preserve room structure, lighting consistency, and keep all surrounding objects unchanged.",
+                    "prompt": f'replace "{object_name}" in the given living room image with the new provided image while keeping the remaining furniture and room architecture unchanged.',
                     "aspect_ratio": "match_input_image",
-                    "input_images": [masked_uri, furniture_uri],
+                    "input_images": [original_uri, furniture_uri],
                     "output_format": "png"
                 }
             )
