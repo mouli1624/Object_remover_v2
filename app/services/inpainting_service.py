@@ -993,7 +993,7 @@ class InpaintingService:
             output = replicate.run(
                 "black-forest-labs/flux-2-dev",
                 input={
-                    "prompt": f'replace "{object_name}" in the given living room image with the new provided image while keeping the remaining furniture and room architecture unchanged.',
+                    "prompt": f'replace "{object_name}" in the given room with the new provided image while keeping the remaining furniture and room architecture unchanged.',
                     "aspect_ratio": "match_input_image",
                     "input_images": [original_uri, furniture_uri],
                     "output_format": "png"

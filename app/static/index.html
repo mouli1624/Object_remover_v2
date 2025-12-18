@@ -488,8 +488,10 @@
       background: white;
       border-radius: 16px;
       padding: 30px;
-      max-width: 500px;
+      max-width: 600px;
       width: 90%;
+      max-height: 85vh;
+      overflow-y: auto;
       box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
       animation: slideUp 0.3s ease;
     }
@@ -803,31 +805,29 @@
       </div>
 
       <div class="prompt-input-container" id="furnitureContainer">
-        <label class="prompt-label" for="furnitureInput">
-          Upload furniture image
+        <label class="prompt-label">
+          Choose Furniture Style
         </label>
-        <input 
-          type="file" 
-          id="furnitureInput" 
-          accept="image/*"
-          style="display: none;"
-        />
-        <label for="furnitureInput" style="
-          display: block;
-          padding: 12px 15px;
-          border: 2px dashed #e2e8f0;
-          border-radius: 10px;
-          text-align: center;
-          cursor: pointer;
-          transition: all 0.3s ease;
+        
+        <!-- Furniture Gallery -->
+        <div id="furnitureGallery" style="
+          max-height: 250px;
+          overflow-y: auto;
+          padding: 10px;
           background: #f7fafc;
-          color: #4a5568;
-          font-weight: 500;
-        " id="furnitureLabel">
-          📁 Choose Furniture Image
-        </label>
-        <div id="furniturePreview" style="margin-top: 10px; display: none;">
-          <img id="furniturePreviewImg" style="max-width: 100%; max-height: 150px; border-radius: 8px; border: 2px solid #e2e8f0;" />
+          border-radius: 10px;
+          border: 2px solid #e2e8f0;
+        ">
+          <div id="furnitureCategories">
+            <div style="text-align: center; padding: 20px; color: #718096;">
+              Loading furniture options...
+            </div>
+          </div>
+        </div>
+        
+        <div id="selectedFurniturePreview" style="margin-top: 10px; display: none; text-align: center;">
+          <div style="font-size: 12px; color: #718096; margin-bottom: 5px;">Selected:</div>
+          <img id="selectedFurnitureImg" style="max-width: 100%; max-height: 120px; border-radius: 8px; border: 2px solid #667eea;" />
         </div>
         
         <!-- API Version Toggle -->
@@ -889,9 +889,10 @@
     const promptInput = document.getElementById('promptInput');
     const furnitureContainer = document.getElementById('furnitureContainer');
     const furnitureInput = document.getElementById('furnitureInput');
-    const furniturePreview = document.getElementById('furniturePreview');
-    const furniturePreviewImg = document.getElementById('furniturePreviewImg');
-    const furnitureLabel = document.getElementById('furnitureLabel');
+    const furnitureGallery = document.getElementById('furnitureGallery');
+    const furnitureCategories = document.getElementById('furnitureCategories');
+    const selectedFurniturePreview = document.getElementById('selectedFurniturePreview');
+    const selectedFurnitureImg = document.getElementById('selectedFurnitureImg');
     const modalCancelBtn = document.getElementById('modalCancelBtn');
     const modalConfirmBtn = document.getElementById('modalConfirmBtn');
 
@@ -901,7 +902,8 @@
     let lastUploadResult = null; // Store upload result for inpainting
     let currentSelectedObject = null; // Store currently selected object
     let selectedAction = null; // 'remove', 'replace', or 'furniture'
-    let furnitureImageData = null; // Store furniture image as base64
+    let furnitureImageData = null; // Store furniture image URL or base64
+    let furnitureCategories_data = []; // Store furniture categories
 
     // Status helper functions
     function showStatus(message, type = 'info') {
@@ -923,9 +925,7 @@
       furnitureContainer.classList.remove('show');
       modalConfirmBtn.style.display = 'none';
       promptInput.value = '';
-      furnitureInput.value = '';
-      furniturePreview.style.display = 'none';
-      furnitureLabel.textContent = '📁 Choose Furniture Image';
+      selectedFurniturePreview.style.display = 'none';
       actionModal.classList.add('show');
     }
 
@@ -956,30 +956,103 @@
     });
 
     // Furniture button handler
-    furnitureBtn.addEventListener('click', () => {
+    furnitureBtn.addEventListener('click', async () => {
       console.log('Furniture button clicked');
       selectedAction = 'furniture';
       console.log('Selected action set to:', selectedAction);
       furnitureContainer.classList.add('show');
       promptContainer.classList.remove('show');
       modalConfirmBtn.style.display = 'block';
+      
+      // Load furniture gallery if not already loaded
+      if (furnitureCategories_data.length === 0) {
+        await loadFurnitureGallery();
+      }
     });
 
-    // Furniture input handler
-    furnitureInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        furnitureImageData = event.target.result;
-        furniturePreviewImg.src = furnitureImageData;
-        furniturePreview.style.display = 'block';
-        furnitureLabel.textContent = `✅ ${file.name}`;
-        console.log('Furniture image loaded');
-      };
-      reader.readAsDataURL(file);
-    });
+    // Load furniture gallery from backend
+    async function loadFurnitureGallery() {
+      try {
+        furnitureCategories.innerHTML = '<div style="text-align: center; padding: 20px; color: #718096;">Loading...</div>';
+        
+        const response = await fetch('/list-furnitures');
+        if (!response.ok) throw new Error('Failed to load furniture');
+        
+        const data = await response.json();
+        furnitureCategories_data = data.categories;
+        
+        if (furnitureCategories_data.length === 0) {
+          furnitureCategories.innerHTML = '<div style="text-align: center; padding: 20px; color: #718096;">No furniture available</div>';
+          return;
+        }
+        
+        // Render categories
+        furnitureCategories.innerHTML = '';
+        furnitureCategories_data.forEach(category => {
+          const categoryDiv = document.createElement('div');
+          categoryDiv.style.marginBottom = '20px';
+          
+          const categoryTitle = document.createElement('h4');
+          categoryTitle.textContent = category.category;
+          categoryTitle.style.cssText = 'margin: 0 0 10px 0; color: #2d3748; font-size: 14px; font-weight: 600;';
+          categoryDiv.appendChild(categoryTitle);
+          
+          const itemsGrid = document.createElement('div');
+          itemsGrid.style.cssText = 'display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 8px;';
+          
+          category.items.forEach(item => {
+            const itemBtn = document.createElement('div');
+            itemBtn.style.cssText = `
+              cursor: pointer;
+              border: 2px solid #e2e8f0;
+              border-radius: 8px;
+              overflow: hidden;
+              transition: all 0.3s ease;
+              background: white;
+            `;
+            
+            const img = document.createElement('img');
+            img.src = item.url;
+            img.alt = item.name;
+            img.style.cssText = 'width: 100%; height: 80px; object-fit: cover; display: block;';
+            
+            const nameDiv = document.createElement('div');
+            nameDiv.textContent = item.name;
+            nameDiv.style.cssText = 'padding: 4px; font-size: 10px; text-align: center; color: #4a5568; background: #f7fafc;';
+            
+            itemBtn.appendChild(img);
+            itemBtn.appendChild(nameDiv);
+            
+            itemBtn.addEventListener('click', () => selectFurniture(item));
+            itemBtn.addEventListener('mouseenter', () => {
+              itemBtn.style.borderColor = '#667eea';
+              itemBtn.style.transform = 'scale(1.05)';
+            });
+            itemBtn.addEventListener('mouseleave', () => {
+              itemBtn.style.borderColor = '#e2e8f0';
+              itemBtn.style.transform = 'scale(1)';
+            });
+            
+            itemsGrid.appendChild(itemBtn);
+          });
+          
+          categoryDiv.appendChild(itemsGrid);
+          furnitureCategories.appendChild(categoryDiv);
+        });
+        
+      } catch (error) {
+        console.error('Error loading furniture:', error);
+        furnitureCategories.innerHTML = '<div style="text-align: center; padding: 20px; color: #e53e3e;">Failed to load furniture</div>';
+      }
+    }
+    
+    // Select furniture item
+    function selectFurniture(item) {
+      furnitureImageData = item.path; // Store the file path
+      selectedFurnitureImg.src = item.url;
+      selectedFurniturePreview.style.display = 'block';
+      console.log('Furniture selected:', item.name, item.path);
+    }
 
     // Modal confirm button
     modalConfirmBtn.addEventListener('click', () => {
@@ -989,7 +1062,7 @@
         return;
       }
       if (selectedAction === 'furniture' && !furnitureImageData) {
-        showStatus('❌ Please upload a furniture image', 'error');
+        showStatus('❌ Please select a furniture image', 'error');
         return;
       }
       processObject();

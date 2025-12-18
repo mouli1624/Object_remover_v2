@@ -32,3 +32,4 @@ async def read_root():
 
 # Mount static files (must be last)
 app.mount("/uploads", StaticFiles(directory="app/static/uploads"), name="uploads")
+app.mount("/furnitures", StaticFiles(directory="app/static/furnitures"), name="furnitures")
