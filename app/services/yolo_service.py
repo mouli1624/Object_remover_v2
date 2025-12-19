@@ -14,6 +14,23 @@ class YOLOService:
         self.model = None
         self._initialize_model()
     
+    def _get_object_position(self, bbox: np.ndarray, image_width: int) -> str:
+        """
+        Determine if object is on left or right side of image based on its center.
+        
+        Args:
+            bbox: Bounding box [x1, y1, x2, y2]
+            image_width: Width of the image
+        
+        Returns:
+            'left' or 'right'
+        """
+        x1, y1, x2, y2 = bbox
+        object_center_x = (x1 + x2) / 2
+        image_center_x = image_width / 2
+        
+        return 'left' if object_center_x < image_center_x else 'right'
+    
     def _initialize_model(self):
         """
         Initialize YOLOv8 segmentation model.
@@ -179,10 +196,21 @@ class YOLOService:
             mask_image.save(output_mask_path)
         
         # Prepare detection info
+        class_name = self.model.names[selected_class] if selected_class is not None else "none"
+        
+        # Calculate position (left/right) for internal use in prompts
+        position = None
+        class_name_with_position = class_name
+        if selected_mask is not None and selected_box is not None:
+            position = self._get_object_position(selected_box, w)
+            class_name_with_position = f"{position} {class_name}"
+        
         detection_info = {
             "detected": selected_mask is not None,
             "class_id": selected_class if selected_class is not None else -1,
-            "class_name": self.model.names[selected_class] if selected_class is not None else "none",
+            "class_name": class_name,  # Display name without position
+            "class_name_with_position": class_name_with_position,  # Internal use for prompts
+            "position": position,
             "confidence": selected_conf,
             "bbox": selected_box.tolist() if selected_box is not None else None
         }
@@ -333,10 +361,19 @@ class YOLOService:
                     mask_data = np.zeros((h, w), dtype=np.uint8)
                     mask_data[y1:y2, x1:x2] = 255
                 
+                # Get base class name
+                base_class_name = self.model.names[int(cls)]
+                
+                # Determine position (left/right) for internal use in prompts
+                position = self._get_object_position(box, w)
+                class_name_with_position = f"{position} {base_class_name}"
+                
                 obj_info = {
                     "id": i,
                     "class_id": int(cls),
-                    "class_name": self.model.names[int(cls)],
+                    "class_name": base_class_name,  # Display name without position
+                    "class_name_with_position": class_name_with_position,  # Internal use for prompts
+                    "position": position,
                     "confidence": float(conf),
                     "bbox": [x1, y1, x2, y2],
                     "mask_data": mask_data.tolist(),  # Convert to list for JSON serialization
