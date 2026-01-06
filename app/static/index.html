@@ -681,7 +681,32 @@
 
     <div id="status" class="status"></div>
     
-    <!-- Detected Objects Panel -->
+    <!-- Remove Mode Panel -->
+    <div id="removeModePanel" style="display: none; margin: 20px auto; max-width: 1400px; padding: 20px; background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+      <h3 style="margin: 0 0 15px 0; color: #333;">🎯 Detected Object</h3>
+      <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+        <div style="flex: 1;">
+          <div style="font-size: 18px; font-weight: 600; color: #2d3748; margin-bottom: 5px;" id="removeModeObjectName"></div>
+          <div style="font-size: 14px; color: #718096;" id="removeModeObjectConfidence"></div>
+        </div>
+        <button id="executeRemoveBtn" style="
+          padding: 12px 24px;
+          background: #ef4444;
+          color: white;
+          border: none;
+          border-radius: 8px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+        ">🗑️ Remove Object</button>
+      </div>
+      <div style="font-size: 12px; color: #718096; font-style: italic;">
+        The mask is displayed on the image. Click "Remove Object" to proceed with removal.
+      </div>
+    </div>
+    
+    <!-- Detected Objects Panel (Replace Mode) -->
     <div id="detectedObjectsPanel" style="display: none; margin: 20px auto; max-width: 1400px; padding: 20px; background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
       <h3 style="margin: 0 0 15px 0; color: #333;">🎯 Detected Objects (Click to Remove or Replace)</h3>
       <div id="detectedObjectsList" style="display: flex; flex-wrap: wrap; gap: 10px;"></div>
@@ -767,7 +792,36 @@
     </div>
   </div>
 
-  <!-- Modal for Remove/Replace Choice -->
+  <!-- Mode Selection Modal -->
+  <div class="modal-overlay" id="modeSelectionModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        🎯 Choose Detection Mode
+      </div>
+      <div class="modal-subheader">
+        Select how you want to work with objects
+      </div>
+      
+      <div class="modal-actions">
+        <button class="modal-btn" id="modeRemoveBtn">
+          <div class="modal-btn-icon">🗑️</div>
+          <div>Remove Mode</div>
+          <div style="font-size: 11px; opacity: 0.7; margin-top: 4px;">Click objects to detect & remove individually</div>
+        </button>
+        <button class="modal-btn" id="modeReplaceBtn">
+          <div class="modal-btn-icon">✨</div>
+          <div>Replace Mode</div>
+          <div style="font-size: 11px; opacity: 0.7; margin-top: 4px;">Auto-detect all objects for replacement</div>
+        </button>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-cancel" id="modeSelectionCancelBtn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal for Remove/Replace Choice (for individual objects) -->
   <div class="modal-overlay" id="actionModal">
     <div class="modal-content">
       <div class="modal-header">
@@ -877,6 +931,24 @@
     const detectedObjectsPanel = document.getElementById('detectedObjectsPanel');
     const detectedObjectsList = document.getElementById('detectedObjectsList');
     const loadingText = document.getElementById('loadingText');
+    
+    // Mode selection modal elements
+    const modeSelectionModal = document.getElementById('modeSelectionModal');
+    const modeRemoveBtn = document.getElementById('modeRemoveBtn');
+    const modeReplaceBtn = document.getElementById('modeReplaceBtn');
+    const modeSelectionCancelBtn = document.getElementById('modeSelectionCancelBtn');
+    
+    // Remove Mode panel elements
+    const removeModePanel = document.getElementById('removeModePanel');
+    const removeModeObjectName = document.getElementById('removeModeObjectName');
+    const removeModeObjectConfidence = document.getElementById('removeModeObjectConfidence');
+    const executeRemoveBtn = document.getElementById('executeRemoveBtn');
+    
+    // State variables
+    let detectionMode = null; // 'remove' or 'replace'
+    let currentDetectedMask = null;
+    let currentDetectedObject = null;
+    let isRemoveModeActive = false;
     const loadingSubtext = document.getElementById('loadingSubtext');
     
     // Modal elements
@@ -1225,10 +1297,25 @@
           canvas.style.display = 'block';
           canvasContainer.classList.add('has-image');
           
-          // Hide detected objects panel and result
+          // Reset all state and panels
           detectedObjectsPanel.style.display = 'none';
+          removeModePanel.style.display = 'none';
           resultPlaceholder.style.display = 'flex';
           resultImage.style.display = 'none';
+          
+          // Clear state variables
+          detectionMode = null;
+          isRemoveModeActive = false;
+          currentDetectedMask = null;
+          currentDetectedObject = null;
+          lastUploadResult = null;
+          
+          // Remove any click listeners
+          canvas.removeEventListener('click', handleRemoveModeClick);
+          canvas.style.cursor = 'default';
+          
+          // Clear detected objects list
+          detectedObjectsList.innerHTML = '';
           
           showStatus('✅ Image loaded! Click "Detect Objects" to find objects.', 'success');
           setTimeout(hideStatus, 3000);
@@ -1238,11 +1325,88 @@
       reader.readAsDataURL(file);
     });
 
-    // Detect All Objects button
+    // Detect All Objects button - Show mode selection modal
     detectAllBtn.addEventListener('click', async () => {
       if (!currentImage) {
         showStatus('❌ Please upload an image first', 'error');
         return;
+      }
+      
+      // Show mode selection modal
+      modeSelectionModal.classList.add('show');
+    });
+    
+    // Mode selection handlers
+    modeSelectionCancelBtn.addEventListener('click', () => {
+      modeSelectionModal.classList.remove('show');
+    });
+    
+    // Remove Mode - Click to detect individual objects
+    modeRemoveBtn.addEventListener('click', async () => {
+      modeSelectionModal.classList.remove('show');
+      detectionMode = 'remove';
+      isRemoveModeActive = true;
+      
+      // Clear Replace Mode state if switching from Replace Mode
+      detectedObjectsPanel.style.display = 'none';
+      detectedObjectsList.innerHTML = '';
+      
+      // Redraw original image to clear any overlays
+      if (currentImage) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(currentImage, 0, 0);
+      }
+      
+      // Upload image if not already uploaded
+      try {
+        if (!lastUploadResult || !lastUploadResult.image_path) {
+          showStatus('📤 Uploading image...', 'info');
+          
+          const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+          const formData = new FormData();
+          formData.append('image', blob, 'image.png');
+          
+          const uploadResponse = await fetch('/upload', {
+            method: 'POST',
+            body: formData
+          });
+          
+          if (!uploadResponse.ok) throw new Error('Upload failed');
+          lastUploadResult = await uploadResponse.json();
+        }
+        
+        showStatus('👆 Remove Mode Active: Click on any object in the image to detect and remove it', 'info');
+        
+        // Enable click detection on canvas
+        canvas.style.cursor = 'crosshair';
+        canvas.addEventListener('click', handleRemoveModeClick);
+        
+      } catch (error) {
+        console.error('Upload error:', error);
+        showStatus(`❌ Upload failed: ${error.message}`, 'error');
+        isRemoveModeActive = false;
+      }
+    });
+    
+    // Replace Mode - Auto-detect all objects
+    modeReplaceBtn.addEventListener('click', async () => {
+      modeSelectionModal.classList.remove('show');
+      detectionMode = 'replace';
+      
+      // Clear Remove Mode state if switching from Remove Mode
+      if (isRemoveModeActive) {
+        isRemoveModeActive = false;
+        canvas.removeEventListener('click', handleRemoveModeClick);
+        canvas.style.cursor = 'default';
+      }
+      removeModePanel.style.display = 'none';
+      currentDetectedMask = null;
+      currentDetectedObject = null;
+      
+      // Redraw original image to clear any mask overlays
+      if (currentImage) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(currentImage, 0, 0);
       }
       
       try {
@@ -1286,7 +1450,7 @@
           showStatus('⚠️ No objects detected in the image', 'warning');
           detectedObjectsPanel.style.display = 'none';
         } else {
-          showStatus(`✅ Detected ${result.total_count} object(s)! Click on any to remove.`, 'success');
+          showStatus(`✅ Detected ${result.total_count} object(s)! Click on any to replace.`, 'success');
           
           // Display detected objects
           detectedObjectsList.innerHTML = '';
@@ -1341,6 +1505,168 @@
         console.error('Detection error:', error);
         showStatus(`❌ Detection failed: ${error.message}`, 'error');
         detectAllBtn.disabled = false;
+      }
+    });
+    
+    // Handle Remove Mode Click - Detect object at click point
+    async function handleRemoveModeClick(event) {
+      if (!isRemoveModeActive) return;
+      
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const x = Math.floor((event.clientX - rect.left) * scaleX);
+      const y = Math.floor((event.clientY - rect.top) * scaleY);
+      
+      try {
+        showStatus('🔍 Detecting object at click point...', 'info');
+        
+        // Create FormData with image and click point
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        const formData = new FormData();
+        formData.append('image', blob, 'image.png');
+        
+        // Create points as a Blob/File (backend expects UploadFile)
+        const pointsJson = JSON.stringify([{x, y}]);
+        const pointsBlob = new Blob([pointsJson], { type: 'application/json' });
+        formData.append('points', pointsBlob, 'points.json');
+        formData.append('mode', 'yolo');
+        
+        const response = await fetch('/upload', {
+          method: 'POST',
+          body: formData
+        });
+        
+        if (!response.ok) throw new Error('Detection failed');
+        
+        const result = await response.json();
+        
+        if (!result.detection || !result.detection.detected) {
+          showStatus('⚠️ No object detected at this location. Try clicking on an object.', 'warning');
+          return;
+        }
+        
+        // Store detected object and mask info
+        currentDetectedObject = result.detection;
+        currentDetectedMask = result.mask_path;
+        lastUploadResult = result;
+        
+        // Draw mask overlay on canvas
+        await drawMaskOverlay(result.mask_path);
+        
+        // Show Remove Mode panel with object info
+        removeModeObjectName.textContent = result.detection.class_name;
+        removeModeObjectConfidence.textContent = `Confidence: ${(result.detection.confidence * 100).toFixed(1)}%`;
+        removeModePanel.style.display = 'block';
+        
+        showStatus(`✅ Detected: ${result.detection.class_name}! Review the mask and click Remove to proceed.`, 'success');
+        
+        // Disable further clicks until removal is done
+        canvas.removeEventListener('click', handleRemoveModeClick);
+        canvas.style.cursor = 'default';
+        isRemoveModeActive = false;
+        
+      } catch (error) {
+        console.error('Detection error:', error);
+        showStatus(`❌ Detection failed: ${error.message}`, 'error');
+      }
+    }
+    
+    // Draw mask overlay on canvas
+    async function drawMaskOverlay(maskPath) {
+      return new Promise((resolve, reject) => {
+        const maskImg = new Image();
+        maskImg.onload = () => {
+          // Redraw original image
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(currentImage, 0, 0);
+          
+          // Draw semi-transparent red mask overlay
+          ctx.globalAlpha = 0.4;
+          ctx.fillStyle = '#ef4444';
+          
+          // Create temporary canvas to process mask
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = canvas.width;
+          tempCanvas.height = canvas.height;
+          const tempCtx = tempCanvas.getContext('2d');
+          tempCtx.drawImage(maskImg, 0, 0, canvas.width, canvas.height);
+          
+          const imageData = tempCtx.getImageData(0, 0, canvas.width, canvas.height);
+          const data = imageData.data;
+          
+          // Draw red overlay where mask is white
+          for (let y = 0; y < canvas.height; y++) {
+            for (let x = 0; x < canvas.width; x++) {
+              const idx = (y * canvas.width + x) * 4;
+              if (data[idx] > 128) { // White pixel in mask
+                ctx.fillRect(x, y, 1, 1);
+              }
+            }
+          }
+          
+          ctx.globalAlpha = 1.0;
+          resolve();
+        };
+        maskImg.onerror = reject;
+        maskImg.src = '/' + maskPath;
+      });
+    }
+    
+    // Execute Remove Button - Remove the detected object
+    executeRemoveBtn.addEventListener('click', async () => {
+      if (!currentDetectedObject || !currentDetectedMask) {
+        showStatus('❌ No object detected to remove', 'error');
+        return;
+      }
+      
+      try {
+        executeRemoveBtn.disabled = true;
+        removeModePanel.style.display = 'none';
+        
+        // Show loading overlay
+        inpaintingLoader.classList.add('show');
+        loadingText.textContent = 'Removing Object...';
+        loadingSubtext.textContent = 'AI is working its magic ✨';
+        
+        // Call remove endpoint
+        const response = await fetch('/remove', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            image_path: lastUploadResult.image_path,
+            mask_path: currentDetectedMask,
+            object_name: currentDetectedObject.class_name_with_position || currentDetectedObject.class_name
+          })
+        });
+        
+        if (!response.ok) throw new Error('Removal failed');
+        
+        const result = await response.json();
+        
+        // Display result
+        resultImage.src = result.output_url;
+        resultImage.style.display = 'block';
+        resultPlaceholder.style.display = 'none';
+        
+        inpaintingLoader.classList.remove('show');
+        showStatus('✅ Object removed successfully!', 'success');
+        
+        // Reset state
+        currentDetectedObject = null;
+        currentDetectedMask = null;
+        executeRemoveBtn.disabled = false;
+        
+        // Redraw original image on canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(currentImage, 0, 0);
+        
+      } catch (error) {
+        console.error('Removal error:', error);
+        inpaintingLoader.classList.remove('show');
+        showStatus(`❌ Removal failed: ${error.message}`, 'error');
+        executeRemoveBtn.disabled = false;
+        removeModePanel.style.display = 'block';
       }
     });
     
