@@ -1629,8 +1629,8 @@
         loadingText.textContent = 'Removing Object...';
         loadingSubtext.textContent = 'AI is working its magic ✨';
         
-        // Call remove endpoint
-        const response = await fetch('/remove', {
+        // Call remove-hybrid endpoint (LaMa + Flux Kontext)
+        const response = await fetch('/remove-hybrid', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

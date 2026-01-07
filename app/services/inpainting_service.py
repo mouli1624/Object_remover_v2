@@ -382,7 +382,7 @@ class InpaintingService:
             lama_output_path = str(image_path_obj.parent / f"lama_intermediate_{image_path_obj.name}")
             
             # Dilate mask for LaMa
-            dilated_mask_path = self.dilate_mask(mask_path, dilation_pixels=50)
+            dilated_mask_path = self.dilate_mask(mask_path, dilation_pixels=9)
             
             # Load image and dilated mask
             with open(image_path, 'rb') as f:
@@ -453,7 +453,7 @@ class InpaintingService:
             kontext_output = replicate.run(
                 "black-forest-labs/flux-kontext-pro",
                 input={
-                    "prompt": "remove blurred subject from the image",
+                    "prompt": "remove blurred subject from the image. the result image should look as a natural room without any inconsistencies",
                     "input_image": kontext_image_uri,
                     "guidance": "4.5",
                     "output_format": "png"
